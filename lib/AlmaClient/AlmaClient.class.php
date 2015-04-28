@@ -462,16 +462,28 @@ class AlmaClient {
 
       // Return error code when patron is blocked.
       if ($res_message == 'reservationPatronBlocked') {
-        return ALMA_AUTH_BLOCKED;
+        return array(
+          'alma_status' => ALMA_AUTH_BLOCKED,
+          'res_status' => $res_status,
+          'message' => $res_message
+        );
       }
 
       // General catchall if status is not okay is to report failure.
       if ($res_status == 'reservationNotOk') {
-        return FALSE;
+        return array(
+          'alma_status' => FALSE,
+          'res_status' => $res_status,
+          'message' => $res_message
+        );
       }
     }
     catch (AlmaClientReservationNotFound $e) {
-      return FALSE;
+      return array(
+        'alma_status' => FALSE,
+        'res_status' => '',
+        'message' => $e->getMessage(),
+      );
     }
 
     return $queue_number;
@@ -812,6 +824,7 @@ class AlmaClient {
       $data[$record->getAttribute('id')] = array(
         'reservable' => ($record->getAttribute('isReservable') == 'true') ? TRUE : FALSE,
         'available' => ($record->getAttribute('isAvailable') == 'yes') ? TRUE : FALSE,
+        'availability_information' => ($record->getAttribute('availabilityInformation') == 'noHolding') ? FALSE : TRUE,
       );
     }
     return $data;
@@ -978,6 +991,61 @@ class AlmaClient {
     return TRUE;
   }
 
+  /**
+   * Runs search across the service.
+   *
+   * @param string $query
+   *   Query string.
+   * @param string $type
+   *   Search type, usually 'native'.
+   * @param int $start
+   *   The search offset.
+   * @param int $limit
+   *   Result set limit.
+   *
+   * @return Array
+   *   Set of items id's.
+   */
+  public function run_lms_search($query, $type, $start, $limit) {
+    $params = array(
+      'searchText' => $query,
+      'searchType' => $type,
+      'startNo' => $start,
+      'nofRecords' => $limit,
+    );
+
+    $doc = $this->request('catalogue/fulltextsearch', $params);
+
+    return $this->process_lms_search($doc);
+  }
+
+  /**
+   * Process the search response from WS.
+   *
+   * Munge the DOM structure into an array.
+   *
+   * @param DOMElement $elem
+   *   WS response in DOM format.
+   *
+   * @return Array
+   *   Array of result values.
+   */
+  private function process_lms_search($elem) {
+    $response = array(
+      'status' => $elem->getElementsByTagName('status')->item(0)->getAttribute('value'),
+      'numRecords' => $elem->getElementsByTagName('nofRecords')->item(0)->nodeValue,
+      'numrecordsTotal' => $elem->getElementsByTagName('nofRecordsTotal')->item(0)->nodeValue,
+      'start' => $elem->getElementsByTagName('startNo')->item(0)->nodeValue,
+      'limit' => $elem->getElementsByTagName('stopNo')->item(0)->nodeValue,
+      'items' => array(),
+    );
+
+    foreach ($elem->getElementsByTagName('catalogueRecord') as $record) {
+      $response['items'][] = $record->getAttribute('id');
+    }
+
+    return $response;
+  }
 }
 
 /**
