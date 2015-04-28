@@ -3,6 +3,7 @@ description = Implementation of Axiell’s Alma API for DDELibra.
 core = 7.x
 package = Providers
 project = alma
+version = 7.x-2.0.0+easy
 dependencies[] = date
 dependencies[] = ding_provider
 dependencies[] = ding_reservation
