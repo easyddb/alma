@@ -53,52 +53,57 @@ class AlmaClient {
    *    A DOMDocument object with the response.
    */
   public function request($method, $params = array(), $check_status = TRUE) {
-    $start_time = explode(' ', microtime());
-    // For use with a non-Drupal-system, we should have a way to swap
-    // the HTTP client out.
-    $request = drupal_http_request(url($this->base_url . $method, array('query' => $params)), array('secure_socket_transport' => 'sslv3'));
-    $stop_time = explode(' ', microtime());
-    // For use with a non-Drupal-system, we should have a way to swap
-    // logging and logging preferences out.
-    if (variable_get('alma_enable_logging', FALSE)) {
-      $seconds = floatval(($stop_time[1] + $stop_time[0]) - ($start_time[1] + $start_time[0]));
+    try {
+      $start_time = explode(' ', microtime());
+      // For use with a non-Drupal-system, we should have a way to swap
+      // the HTTP client out.
+      $request = drupal_http_request(url($this->base_url . $method, array('query' => $params)), array('secure_socket_transport' => 'sslv3'));
+      $stop_time = explode(' ', microtime());
+      // For use with a non-Drupal-system, we should have a way to swap
+      // logging and logging preferences out.
+      if (variable_get('alma_enable_logging', FALSE)) {
+        $seconds = floatval(($stop_time[1] + $stop_time[0]) - ($start_time[1] + $start_time[0]));
 
-      // Filter params to avoid logging sensitive data.
-      // This can be disabled by setting alma_logging_filter_params = 0. There
-      // is no UI for setting this variable
-      // It is intended for settings.php in development environments only.
-      $params = (variable_get('alma_logging_filter_params', 1)) ? self::filter_request_params($params) : $params;
+        // Filter params to avoid logging sensitive data.
+        // This can be disabled by setting alma_logging_filter_params = 0. There
+        // is no UI for setting this variable
+        // It is intended for settings.php in development environments only.
+        $params = (variable_get('alma_logging_filter_params', 1)) ? self::filter_request_params($params) : $params;
 
-      // Log the request.
-      watchdog('alma', 'Sent request: @url (@seconds s)', array('@url' => url($this->base_url . $method, array('query' => $params)), '@seconds' => $seconds), WATCHDOG_DEBUG);
-    }
-
-    if ($request->code == 200) {
-      // Since we currently have no need for the more advanced stuff
-      // SimpleXML provides, we'll just use DOM, since that is a lot
-      // faster in most cases.
-      $doc = new DOMDocument();
-      $doc->loadXML($request->data);
-      if (!$check_status || $doc->getElementsByTagName('status')->item(0)->getAttribute('value') == 'ok') {
-        return $doc;
+        // Log the request.
+        watchdog('alma', 'Sent request: @url (@seconds s)', array('@url' => url($this->base_url . $method, array('query' => $params)), '@seconds' => $seconds), WATCHDOG_DEBUG);
       }
-      else {
-        $message = $doc->getElementsByTagName('status')->item(0)->getAttribute('key');
-        switch ($message) {
-          case '':
-          case 'borrCardNotFound':
-            throw new AlmaClientBorrCardNotFound('Invalid borrower credentials');
 
-          case 'reservationNotFound':
-            throw new AlmaClientReservationNotFound('Reservation not found');
+      if ($request->code == 200) {
+        // Since we currently have no need for the more advanced stuff
+        // SimpleXML provides, we'll just use DOM, since that is a lot
+        // faster in most cases.
+        $doc = new DOMDocument();
+        $doc->loadXML($request->data);
+        if (!$check_status || $doc->getElementsByTagName('status')->item(0)->getAttribute('value') == 'ok') {
+          return $doc;
+        }
+        else {
+          $message = $doc->getElementsByTagName('status')->item(0)->getAttribute('key');
+          switch ($message) {
+            case '':
+            case 'borrCardNotFound':
+              throw new AlmaClientBorrCardNotFound('Invalid borrower credentials');
 
-          default:
-            throw new AlmaClientCommunicationError('Status is not okay: ' . $message);
+            case 'reservationNotFound':
+              throw new AlmaClientReservationNotFound('Reservation not found');
+
+            default:
+              throw new AlmaClientCommunicationError('Status is not okay: ' . $message);
+          }
         }
       }
-    }
-    else {
-      throw new AlmaClientHTTPError('Request error: ' . $request->code . $request->error);
+      else {
+        throw new AlmaClientHTTPError('Request error: ' . $request->code . $request->error);
+      }
+    } catch (AlmaClientHTTPError $e) {
+      watchdog('alma', 'Error request: @url. Message: @msg.', array('@url' => url($this->base_url . $method, array('query' => $params)), '@msg' => $e->getMessage()), WATCHDOG_ERROR);
+      return new DOMDocument();
     }
   }
 
