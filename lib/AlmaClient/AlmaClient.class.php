@@ -265,6 +265,10 @@ class AlmaClient {
 
     $info = $doc->getElementsByTagName($info_node)->item(0);
 
+    if (NULL === $info) {
+      return NULL;
+    }
+
     $data = array(
       'user_id' => $info->getAttribute('patronId'),
       'user_name' => $info->getAttribute('patronName'),
